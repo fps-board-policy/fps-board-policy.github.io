@@ -1,0 +1,55 @@
+# Rebuilds and publishes the policy website every time a file changes on the main branch.
+name: Build and publish policy site
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install converters
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pandoc poppler-utils
+          pip install -r tools/requirements.txt
+
+      - name: Convert Word files and run checks
+        run: python tools/convert.py . build
+
+      - name: Show the checks on the run summary page
+        run: cat build/checks.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build the website
+        run: python tools/build_site.py build _site
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
